@@ -39,7 +39,7 @@ def solve_pnp(  # type: ignore
     tvec: NDArray[Shape["3"], Float32] = np.zeros(3, dtype=np.float32),
     epsilon: float = 1e-5,
     max_iterations: int = 100,
-) -> tuple[NDArray[Shape["3"], Float32], NDArray[Shape["3"], Float32]]: 
+) -> tuple[NDArray[Shape["3"], Float32], NDArray[Shape["3"], Float32]]:
     # Get intrinsics and distortion from the lens model
     K = lens_model.camera_matrix.as_matrix()
     dist = lens_model.distortion_coefficients.as_opencv_vector()
