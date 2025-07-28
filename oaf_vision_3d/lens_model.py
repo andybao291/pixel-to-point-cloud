@@ -239,6 +239,7 @@ def _distort_pixels(
 
     return distorted.astype(np.float32)
 
+
 def _undistort_pixels(
     normalized_pixels: NDArray[Shape["H, W, 2"], Float32],
     distortion_coefficients: DistortionCoefficients,
