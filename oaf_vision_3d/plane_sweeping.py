@@ -34,9 +34,6 @@ def reproject_image_at_depth(
         transformation_matrix=transformation_matrix.inverse(),
     ).reshape(*camera_vectors.shape[:2], 2)
 
-    h, w = image.shape[:2]
-    proj_x = np.clip(projected_points[..., 0], 0, w - 1)
-    proj_y = np.clip(projected_points[..., 1], 0, h - 1)
     return np.stack(
         [
             map_coordinates(
