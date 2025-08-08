@@ -8,6 +8,8 @@
 
 # %%
 
+from typing import Union
+
 import numpy as np
 from nptyping import Float32, NDArray, Shape
 from scipy.ndimage import map_coordinates
@@ -58,9 +60,10 @@ def plane_sweeping(
     secondary_transformation_matrices: list[TransformationMatrix],
     depth_range: NDArray[Shape["2"], Float32],
     step_size: float,
-    block_size: int,
+    block_size: Union[int, NDArray[Shape["2"], Float32]],
     subpixel_fit: bool = True,
 ) -> NDArray[Shape["H, W, 3"], Float32]:
+
     pixels = np.indices(image.shape[:2], dtype=np.float32)[::-1].transpose((1, 2, 0))
     undistorted_normalized_pixels = lens_model.undistort_pixels(
         normalized_pixels=lens_model.normalize_pixels(pixels=pixels)
@@ -75,42 +78,55 @@ def plane_sweeping(
         step=step_size,
         dtype=np.float32,
     )
-    errors: list[np.ndarray] = []
+
+    # Combine errors
+    total_error = []
+
     for depth in depths:
-        shifted_images_list = []
-        for _image, _lens_model, _transformation_matrix in zip(
+        depth_errors = []
+
+        for sec_image, sec_lens_model, sec_transform in zip(
             secondary_images, secondary_lens_models, secondary_transformation_matrices
         ):
-            shifted_images_list.append(
-                reproject_image_at_depth(
-                    image=_image,
-                    camera_vectors=camera_vectors,
-                    depth=depth,
-                    lens_model=_lens_model,
-                    transformation_matrix=_transformation_matrix,
-                )
+            reprojected_image = reproject_image_at_depth(
+                image=sec_image,
+                camera_vectors=camera_vectors,
+                depth=depth,
+                lens_model=sec_lens_model,
+                transformation_matrix=sec_transform,
             )
 
-        shifted_images = np.array(shifted_images_list)
-        multiple_pixel_error = np.abs(image[None, ...] - shifted_images).sum(
-            axis=(0, -1)
-        )
+            single_pixel_error = np.abs(image - reprojected_image).sum(axis=-1)
+            depth_errors.append(single_pixel_error)
+
+        if len(depth_errors) > 1:
+            averaged_error = np.stack(depth_errors).mean(axis=0)
+        else:
+            averaged_error = depth_errors[0]
+
+        if isinstance(block_size, (int, np.integer)):
+            bx, by = block_size, block_size
+        else:
+            bx, by = int(block_size[0]), int(block_size[1])
+            
         convoluted_error = convolve2d(
-            convolve2d(
-                multiple_pixel_error, np.ones((1, block_size)) / block_size, mode="same"
-            ),
-            np.ones((block_size, 1)) / block_size,
+            convolve2d(averaged_error, np.ones((1, bx)) / bx, mode="same"),
+            np.ones((by, 1)) / by,
             mode="same",
         )
-        errors.append(convoluted_error)
-    error_array = np.array(errors, dtype=np.float32)
+        total_error.append(convoluted_error)
+
+    error_array = np.array(total_error, dtype=np.float32)
 
     if subpixel_fit:
-        output_value = find_subvalue_poly_2(values=depths, function_value=error_array)
+        best_depth = find_subvalue_poly_2(values=depths, function_value=error_array)
     else:
-        output_value = depths[np.argmin(error_array, axis=0)].astype(np.float32)
+        best_depth = depths[np.argmin(error_array, axis=0)].astype(np.float32)
 
-    output_value[output_value >= depths.max()] = np.nan
-    output_value[output_value <= depths.min()] = np.nan
+    best_depth[best_depth >= depths.max()] = np.nan
+    best_depth[best_depth <= depths.min()] = np.nan
 
-    return camera_vectors * output_value[..., None]
+    # Convert to 3d coordinates
+    xyz = camera_vectors * best_depth[..., None]
+
+    return xyz
