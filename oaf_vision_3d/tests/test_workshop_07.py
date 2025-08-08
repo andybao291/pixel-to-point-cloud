@@ -36,11 +36,11 @@ def workshop_07_results(overwrite: bool = False) -> Status:
 
     reference_data = np.load(DataPaths.ws_07_reference_data)
 
-    test_result = np.allclose(
+    test_results = np.allclose(
         xyz[:, :, 2], reference_data["z"], atol=1e-3, equal_nan=True
     )
 
-    return Status.from_bool(test_result)
+    return Status.from_bool(test_results)
 
 
 def test_workshop_07(overwrite: bool = False) -> None:

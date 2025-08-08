@@ -50,7 +50,7 @@ def reproject_image_at_depth(
     )
 
 
-def plane_sweeping(  # type: ignore
+def plane_sweeping(
     image: NDArray[Shape["H, W, ..."], Float32],
     lens_model: LensModel,
     secondary_images: list[NDArray[Shape["H, W, ..."], Float32]],
