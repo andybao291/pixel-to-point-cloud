@@ -108,7 +108,7 @@ def plane_sweeping(
             bx, by = block_size, block_size
         else:
             bx, by = int(block_size[0]), int(block_size[1])
-            
+
         convoluted_error = convolve2d(
             convolve2d(averaged_error, np.ones((1, bx)) / bx, mode="same"),
             np.ones((by, 1)) / by,
