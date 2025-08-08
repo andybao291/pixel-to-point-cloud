@@ -21,7 +21,7 @@ from oaf_vision_3d.project_points import project_points
 from oaf_vision_3d.transformation_matrix import TransformationMatrix
 
 
-def reproject_image_at_depth(
+def repeoject_image_at_depth(
     image: NDArray[Shape["H, W, ..."], Float32],
     camera_vectors: NDArray[Shape["H, W, 3"], Float32],
     depth: float,
@@ -64,6 +64,7 @@ def plane_sweeping(
     subpixel_fit: bool = True,
 ) -> NDArray[Shape["H, W, 3"], Float32]:
 
+    # Create camera vectors for the main image
     pixels = np.indices(image.shape[:2], dtype=np.float32)[::-1].transpose((1, 2, 0))
     undistorted_normalized_pixels = lens_model.undistort_pixels(
         normalized_pixels=lens_model.normalize_pixels(pixels=pixels)
@@ -72,6 +73,7 @@ def plane_sweeping(
         undistorted_normalized_pixels, ((0, 0), (0, 0), (0, 1)), constant_values=1.0
     )
 
+    # Create depth range
     depths = np.arange(
         start=depth_range[0],
         stop=depth_range[1] + step_size,
@@ -79,16 +81,18 @@ def plane_sweeping(
         dtype=np.float32,
     )
 
-    # Combine errors
+    # Accumulate errors from all secondary images
     total_error = []
 
     for depth in depths:
         depth_errors = []
 
+        # Compare with each secondary image
         for sec_image, sec_lens_model, sec_transform in zip(
             secondary_images, secondary_lens_models, secondary_transformation_matrices
         ):
-            reprojected_image = reproject_image_at_depth(
+            # Reproject secondary image at this depth
+            reprojected_image = repeoject_image_at_depth(
                 image=sec_image,
                 camera_vectors=camera_vectors,
                 depth=depth,
@@ -96,19 +100,23 @@ def plane_sweeping(
                 transformation_matrix=sec_transform,
             )
 
+            # Calculate error between main image and reprojected secondary image
             single_pixel_error = np.abs(image - reprojected_image).sum(axis=-1)
             depth_errors.append(single_pixel_error)
 
+        # Average error across all secondary images
         if len(depth_errors) > 1:
             averaged_error = np.stack(depth_errors).mean(axis=0)
         else:
             averaged_error = depth_errors[0]
 
+        # Handle block_size as either int or array
         if isinstance(block_size, (int, np.integer)):
             bx, by = block_size, block_size
         else:
             bx, by = int(block_size[0]), int(block_size[1])
 
+        # Apply block matching (convolution for smoothing)
         convoluted_error = convolve2d(
             convolve2d(averaged_error, np.ones((1, bx)) / bx, mode="same"),
             np.ones((by, 1)) / by,
@@ -118,15 +126,17 @@ def plane_sweeping(
 
     error_array = np.array(total_error, dtype=np.float32)
 
+    # Find best depth for each pixel
     if subpixel_fit:
         best_depth = find_subvalue_poly_2(values=depths, function_value=error_array)
     else:
         best_depth = depths[np.argmin(error_array, axis=0)].astype(np.float32)
 
+    # Set invalid depths to NaN
     best_depth[best_depth >= depths.max()] = np.nan
     best_depth[best_depth <= depths.min()] = np.nan
 
-    # Convert to 3d coordinates
+    # Convert depth to 3D coordinates
     xyz = camera_vectors * best_depth[..., None]
 
     return xyz
